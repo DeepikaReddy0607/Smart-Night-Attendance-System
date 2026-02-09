@@ -1,27 +1,20 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
-from .models import User, UserDevice
+from .models import User
 
 
 class LoginSerializer(serializers.Serializer):
-    email = serializers.EmailField()
+    roll_no = serializers.CharField(max_length=20)
     password = serializers.CharField(write_only=True)
-
-    device_id = serializers.CharField()
-    device_model = serializers.CharField()
-    os_version = serializers.CharField()
 
     def validate(self, data):
         user = authenticate(
-            email=data["email"],
+            roll_no=data["roll_no"],
             password=data["password"]
         )
 
         if not user:
             raise serializers.ValidationError("Invalid credentials")
-
-        if not user.is_active:
-            raise serializers.ValidationError("Account inactive")
 
         data["user"] = user
         return data
@@ -30,10 +23,19 @@ class LoginSerializer(serializers.Serializer):
 class MeSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ("id", "email", "roll_no", "role")
+        fields = ("roll_no", "role")
 
 
-class UserDeviceSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = UserDevice
-        fields = ("device_id", "device_model", "os_version", "is_active")
+class SendOTPSerializer(serializers.Serializer):
+    roll_no = serializers.CharField(max_length=20)
+    password = serializers.CharField(write_only=True)
+
+    def validate_roll_no(self, value):
+        if User.objects.filter(roll_no=value).exists():
+            raise serializers.ValidationError("Roll number already registered")
+        return value
+
+
+class VerifyOTPSerializer(serializers.Serializer):
+    roll_no = serializers.CharField(max_length=20)
+    otp = serializers.CharField(max_length=6)

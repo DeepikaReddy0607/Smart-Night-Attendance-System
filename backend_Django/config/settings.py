@@ -25,7 +25,11 @@ SECRET_KEY = 'django-insecure-2o&94$3q-)&)7+dn8pytsjd@=rr)ll7lgy4hs*153(gzste#*l
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [
+    "localhost",
+    "127.0.0.1",
+    "10.0.2.2",
+]
 AUTH_USER_MODEL = 'accounts.User'
 
 # Application definition
@@ -41,6 +45,8 @@ INSTALLED_APPS = [
     'rest_framework',
     'corsheaders',
     'accounts',
+    'students',
+    'biometrics',
 ]
 
 MIDDLEWARE = [
