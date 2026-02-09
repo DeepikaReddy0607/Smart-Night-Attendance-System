@@ -1,19 +1,18 @@
 import 'package:flutter/material.dart';
-import 'auth/login_screen.dart';
+import 'auth/auth_guard.dart';
 
-void main(){
-  runApp(const NightAttendanceApp());
+void main() {
+  runApp(const NoctraApp());
 }
 
-class NightAttendanceApp extends StatelessWidget{
-  const NightAttendanceApp({super.key});
+class NoctraApp extends StatelessWidget {
+  const NoctraApp({super.key});
 
   @override
-  Widget build(BuildContext context){
+  Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title:'Smart Night Attendance',
-      home: const LoginScreen(),
+      home: const AuthGuard(),
     );
   }
 }

@@ -1,32 +1,66 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import '../config/api_config.dart';
 
 class AuthService {
+  static const String baseUrl = "http://10.0.2.2:8000/api/auth";
+
+  // LOGIN
   static Future<Map<String, dynamic>> login({
-    required String email,
+    required String rollNo,
     required String password,
   }) async {
-    final url = Uri.parse("${ApiConfig.baseUrl}/api/auth/login/");
-
     final response = await http.post(
-      url,
-      headers: {
-        "Content-Type": "application/json",
-      },
+      Uri.parse("$baseUrl/login/"),
+      headers: {"Content-Type": "application/json"},
       body: jsonEncode({
-        "email": email,
+        "roll_no": rollNo,
         "password": password,
-        "device_id": "flutter_device_001",
-        "device_model": "Android",
-        "os_version": "13",
       }),
     );
 
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body);
-    } else {
-      throw Exception(response.body);
-    }
+    return {
+      "status": response.statusCode,
+      "body": jsonDecode(response.body),
+    };
+  }
+
+  // SEND OTP
+  static Future<Map<String, dynamic>> sendOtp({
+    required String rollNo,
+    required String password,
+  }) async {
+    final response = await http.post(
+      Uri.parse("$baseUrl/register/send-otp/"),
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode({
+        "roll_no": rollNo,
+        "password": password,
+      }),
+    );
+
+    return {
+      "status": response.statusCode,
+      "body": jsonDecode(response.body),
+    };
+  }
+
+  // VERIFY OTP
+  static Future<Map<String, dynamic>> verifyOtp({
+    required String rollNo,
+    required String otp,
+  }) async {
+    final response = await http.post(
+      Uri.parse("$baseUrl/register/verify-otp/"),
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode({
+        "roll_no": rollNo,
+        "otp": otp,
+      }),
+    );
+
+    return {
+      "status": response.statusCode,
+      "body": jsonDecode(response.body),
+    };
   }
 }

@@ -1,104 +1,170 @@
 import 'package:flutter/material.dart';
+import '../services/auth_service.dart';
 import '../student/student_dashboard.dart';
 import '../admin/admin_dashboard.dart';
+import '../services/token_service.dart';
+import 'auth_guard.dart';
+import 'register_screen.dart';
 
-class LoginScreen extends StatefulWidget{
+class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  final TextEditingController identifierController = TextEditingController();
+  final TextEditingController passwordController = TextEditingController();
+
+  bool isLoading = false;
+  bool obscurePassword = true;
+
+  @override
+  void dispose() {
+    identifierController.dispose();
+    passwordController.dispose();
+    super.dispose();
   }
+  Future<void> _handleLogin() async {
+  final identifier = identifierController.text.trim();
+  final password = passwordController.text.trim();
+
+  if (identifier.isEmpty || password.isEmpty) {
+    _showError("All fields are required");
+    return;
+  }
+
+  setState(() => isLoading = true);
+
+  final result = await AuthService.login(
+    rollNo: identifier,
+    password: password,
+  );
+
+  setState(() => isLoading = false);
+
+  if (result["status"] != 200) {
+    _showError(result["error"] ?? "Authentication failed");
+    return;
+  }
+
+  final body = result["body"];
+
+  await TokenService.saveTokens(
+    accessToken: body["access_token"],
+    refreshToken: body["refresh_token"],
+    role: body["role"],
+  );
+
+  Navigator.pushAndRemoveUntil(
+    context,
+    MaterialPageRoute(builder: (_) => AuthGuard()),
+    (route) => false,
+  );
+}
   
-  class _LoginScreenState extends State<LoginScreen>{
 
-    final TextEditingController usernameController = TextEditingController();
-    final TextEditingController passwordController = TextEditingController();
-
-    @override
-    void dispose(){
-      usernameController.dispose();
-      passwordController.dispose();
-      super.dispose();
-    }
-    @override
-    Widget build(BuildContext context){
-      return Scaffold(
-        backgroundColor: Colors.grey.shade100,
-        appBar: AppBar(
-          title: const Text('Login'),
-          centerTitle: true,
-        ),
-        body: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Text(
-                'Smart Night Attendance',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 30),
-
-              TextField(
-                controller: usernameController,
-                decoration: const InputDecoration(
-                  labelText: 'Roll Number / Username',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              TextField(
-                controller: passwordController,
-                obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'Password',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-
-              const SizedBox(height: 30),
-
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton(
-                  onPressed: () {
-                    final username = usernameController.text.trim();
-                    final password = passwordController.text.trim();
-
-                    if (username.isEmpty || password.isEmpty){
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Please enter all fields ')),
-                      );
-                      return;
-                    }
-                    if(username.toLowerCase() == 'admin'){
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(
-                          builder:(context) => const AdminDashboard(),
-                        ),
-                      );
-                    }
-                    else{
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const StudentDashboard(),
-                          ),
-                      );
-                    }
-                  },
-                  child: const Text('Login'),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Image.asset(
+              "assets/images/noctra_logo.png",
+              height: 90,
+            ),
+
+            const SizedBox(height: 32),
+
+            const Text(
+              "Secure Login",
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
+            ),
+
+            const SizedBox(height: 6),
+
+            const Text(
+              "Authorized users only",
+              style: TextStyle(color: Colors.grey),
+            ),
+
+            const SizedBox(height: 32),
+
+            TextField(
+              controller: identifierController,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(
+                labelText: "Roll Number / Mobile",
+                labelStyle: TextStyle(color: Colors.grey),
+                border: OutlineInputBorder(),
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            TextField(
+              controller: passwordController,
+              obscureText: obscurePassword,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                labelText: "Password",
+                labelStyle: const TextStyle(color: Colors.grey),
+                border: const OutlineInputBorder(),
+                suffixIcon: IconButton(
+                  icon: Icon(
+                    obscurePassword
+                        ? Icons.visibility_off
+                        : Icons.visibility,
+                    color: Colors.grey,
+                  ),
+                  onPressed: () {
+                    setState(() => obscurePassword = !obscurePassword);
+                  },
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 32),
+
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: ElevatedButton(
+                onPressed: isLoading ? null : _handleLogin,
+                child: isLoading
+                    ? const CircularProgressIndicator()
+                    : const Text("LOGIN"),
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const RegisterScreen(),
+                  ),
+                );
+              },
+              child: const Text("New user? Register here"),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
