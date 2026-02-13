@@ -52,10 +52,15 @@ class User(AbstractBaseUser, PermissionsMixin):
         return f"{self.roll_no} ({self.role})"
 
 class OTPVerification(models.Model):
-    roll_no = models.CharField(max_length=20)
+    PURPOSE_CHOICES = (
+        ("ACTIVATION", "Activation"),
+        ("LOGIN", "Login"),
+    )
 
+    roll_no = models.CharField(max_length=20)
     otp_hash = models.CharField(max_length=128)
-    temp_password = models.CharField(max_length=128)
+    temp_password = models.CharField(max_length=128, null=True, blank=True)
+    purpose = models.CharField(max_length=20, choices=PURPOSE_CHOICES)
     expires_at = models.DateTimeField()
 
     created_at = models.DateTimeField(auto_now_add=True)

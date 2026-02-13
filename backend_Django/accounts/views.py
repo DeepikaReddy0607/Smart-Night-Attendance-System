@@ -20,7 +20,6 @@ from .serializers import (
 )
 from .models import User, OTPVerification
 from students.models import StudentProfile
-from biometrics.models import BiometricProfile
 
 class LoginView(APIView):
     permission_classes = [AllowAny]
@@ -31,43 +30,38 @@ class LoginView(APIView):
 
         user = serializer.validated_data["user"]
 
-        if not user.is_active:
-            return Response(
-                {"error": "Account disabled"},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
         if user.role == "STUDENT":
             try:
-                profile = StudentProfile.objects.get(user=user)
+                StudentProfile.objects.get(user=user)
             except StudentProfile.DoesNotExist:
                 return Response(
                     {"error": "Student profile missing"},
                     status=status.HTTP_403_FORBIDDEN,
                 )
 
-            if profile.registration_stage < 5:
-                return Response(
-                    {"error": "Registration incomplete"},
-                    status=status.HTTP_403_FORBIDDEN,
-                )
+        # Generate LOGIN OTP
+        otp = str(random.randint(100000, 999999))
+        otp_hash = hashlib.sha256(otp.encode()).hexdigest()
 
-            if not BiometricProfile.objects.filter(user=user).exists():
-                return Response(
-                    {"error": "Biometric not registered"},
-                    status=status.HTTP_403_FORBIDDEN,
-                )
+        OTPVerification.objects.filter(
+            roll_no=user.roll_no,
+            purpose="LOGIN"
+        ).delete()
 
-        refresh = RefreshToken.for_user(user)
+        OTPVerification.objects.create(
+            roll_no=user.roll_no,
+            otp_hash=otp_hash,
+            purpose="LOGIN",
+            expires_at=timezone.now() + timedelta(minutes=5),
+        )
+
+        print(f"[LOGIN OTP] {user.roll_no}: {otp}")
 
         return Response(
-            {
-                "access_token": str(refresh.access_token),
-                "refresh_token": str(refresh),
-                "role": user.role.lower(),
-            },
+            {"message": "OTP sent"},
             status=status.HTTP_200_OK,
         )
+
 
 class LogoutView(APIView):
     permission_classes = [IsAuthenticated]
@@ -97,20 +91,38 @@ class SendOTPView(APIView):
         roll_no = serializer.validated_data["roll_no"]
         password = serializer.validated_data["password"]
 
+        # 🔥 Student must already exist (allocated by admin)
+        try:
+            user = User.objects.get(roll_no=roll_no, role="STUDENT")
+        except User.DoesNotExist:
+            return Response(
+                {"error": "Student not allocated by admin"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        # If already active, block OTP
+        if user.is_active:
+            return Response(
+                {"error": "Account already activated"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Generate OTP
         otp = str(random.randint(100000, 999999))
         otp_hash = hashlib.sha256(otp.encode()).hexdigest()
 
-        OTPVerification.objects.filter(roll_no=roll_no).delete()
+        OTPVerification.objects.filter(roll_no=roll_no, purpose="ACTIVATION").delete()
 
         OTPVerification.objects.create(
             roll_no=roll_no,
             otp_hash=otp_hash,
+            purpose="ACTIVATION",
             temp_password=password,
             expires_at=timezone.now() + timedelta(minutes=5),
         )
 
-        # DEV ONLY (remove in production)
-        print(f"[DEV] OTP for {roll_no}: {otp}")
+        # DEV ONLY
+        print(f"[DEV OTP] {roll_no}: {otp}")
 
         return Response(
             {"message": "OTP sent successfully"},
@@ -126,9 +138,13 @@ class VerifyOTPView(APIView):
 
         roll_no = serializer.validated_data["roll_no"]
         otp = serializer.validated_data["otp"]
+        purpose = serializer.validated_data["purpose"]
 
         try:
-            record = OTPVerification.objects.get(roll_no=roll_no)
+            record = OTPVerification.objects.get(
+                roll_no=roll_no,
+                purpose=purpose
+            )
         except OTPVerification.DoesNotExist:
             return Response(
                 {"error": "OTP not found"},
@@ -143,37 +159,58 @@ class VerifyOTPView(APIView):
             )
 
         otp_hash = hashlib.sha256(otp.encode()).hexdigest()
+
         if otp_hash != record.otp_hash:
             return Response(
                 {"error": "Invalid OTP"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        password = record.temp_password
-        if not password:
+        try:
+            user = User.objects.get(roll_no=roll_no)
+        except User.DoesNotExist:
             return Response(
-                {"error": "Registration session expired"},
-                status=status.HTTP_400_BAD_REQUEST,
+                {"error": "User not found"},
+                status=status.HTTP_404_NOT_FOUND,
             )
-        
-        # CREATE USER
-        user = User.objects.create_user(
-            roll_no=roll_no,
-            password=password,
-            role="STUDENT",
-        )
-        user.is_active = False
-        user.save()
 
-        # CREATE STUDENT PROFILE
-        StudentProfile.objects.create(
-            user=user,
-            registration_stage=2,  # OTP verified
-        )
+        # 🔥 ACTIVATION FLOW
+        if purpose == "ACTIVATION":
+
+            if user.is_active:
+                return Response(
+                    {"error": "Account already activated"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if not record.temp_password:
+                return Response(
+                    {"error": "Registration session expired"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            user.set_password(record.temp_password)
+            user.is_active = True
+            user.save()
+
+        # 🔥 LOGIN FLOW
+        elif purpose == "LOGIN":
+
+            if not user.is_active:
+                return Response(
+                    {"error": "Account not activated"},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
 
         record.delete()
 
+        refresh = RefreshToken.for_user(user)
+
         return Response(
-            {"message": "Registration successful"},
-            status=status.HTTP_201_CREATED,
+            {
+                "access_token": str(refresh.access_token),
+                "refresh_token": str(refresh),
+                "role": user.role.lower(),
+            },
+            status=status.HTTP_200_OK,
         )

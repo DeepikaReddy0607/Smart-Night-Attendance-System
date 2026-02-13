@@ -8,6 +8,5 @@ class StudentProfileAdmin(admin.ModelAdmin):
         "hostel",
         "block",
         "room_number",
-        "registration_stage",
     )
-    list_filter = ("hostel", "registration_stage")
+    list_filter = ("hostel",)

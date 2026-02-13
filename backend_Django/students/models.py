@@ -2,24 +2,11 @@ from django.db import models
 from accounts.models import User
 
 class StudentProfile(models.Model):
-    REGISTRATION_STAGES = (
-        (0, "Not Started"),
-        (1, "Identity Verified"),
-        (2, "OTP Verified"),
-        (3, "Hostel Assigned"),
-        (4, "Biometric Registered"),
-        (5, "Registration Complete"),
-    )
 
     user = models.OneToOneField(
         User,
         on_delete=models.CASCADE,
         related_name="student_profile"
-    )
-
-    registration_stage = models.PositiveSmallIntegerField(
-        choices=REGISTRATION_STAGES,
-        default=0
     )
 
     # Physical binding (critical for geo-fencing)

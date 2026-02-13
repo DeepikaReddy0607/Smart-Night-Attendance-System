@@ -28,14 +28,9 @@ class MeSerializer(serializers.ModelSerializer):
 
 class SendOTPSerializer(serializers.Serializer):
     roll_no = serializers.CharField(max_length=20)
-    password = serializers.CharField(write_only=True)
-
-    def validate_roll_no(self, value):
-        if User.objects.filter(roll_no=value).exists():
-            raise serializers.ValidationError("Roll number already registered")
-        return value
-
+    password = serializers.CharField()
 
 class VerifyOTPSerializer(serializers.Serializer):
     roll_no = serializers.CharField(max_length=20)
     otp = serializers.CharField(max_length=6)
+    purpose = serializers.ChoiceField(choices=["ACTIVATION","LOGIN"])
