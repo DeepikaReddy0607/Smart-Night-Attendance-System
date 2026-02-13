@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:local_auth/local_auth.dart';
 import 'student_permission.dart';
 import 'attendance_store.dart';
 import 'attendance_record.dart';
 import 'geofence_service.dart';
-import 'biometric_service.dart';
 
 enum AttendanceStatus { notMarked, onTime, late, absent }
 
@@ -11,12 +11,12 @@ class MarkAttendanceScreen extends StatefulWidget {
   const MarkAttendanceScreen({super.key});
 
   @override
-  State<MarkAttendanceScreen> createState() =>
-      _MarkAttendanceScreenState();
+  State<MarkAttendanceScreen> createState() => _MarkAttendanceScreenState();
 }
 
 class _MarkAttendanceScreenState extends State<MarkAttendanceScreen> {
   AttendanceStatus status = AttendanceStatus.notMarked;
+  bool isSubmitting = false;
 
   bool isAttendanceWindowOpen() {
     final now = DateTime.now();
@@ -55,8 +55,6 @@ class _MarkAttendanceScreenState extends State<MarkAttendanceScreen> {
       record.movementState = HostelMovementState.temporarilyLeft;
     }
 
-    if (record.movementState != HostelMovementState.temporarilyLeft) return;
-
     final now = DateTime.now();
 
     final cutoff =
@@ -64,24 +62,68 @@ class _MarkAttendanceScreenState extends State<MarkAttendanceScreen> {
             ? DateTime(now.year, now.month, now.day + 1, 0, 0)
             : DateTime(now.year, now.month, now.day, 22, 0);
 
-    if (now.isAfter(cutoff)) {
+    if (record.movementState ==
+            HostelMovementState.temporarilyLeft &&
+        now.isAfter(cutoff)) {
       record.movementState = HostelMovementState.violationConfirmed;
-
       debugPrint(
           "WARDEN ALERT: Student marked attendance and left hostel.");
     }
   }
+  Future<void> _markAttendance(BuildContext context) async {
+  if (isSubmitting) return;
+
+  setState(() => isSubmitting = true);
+
+  final LocalAuthentication auth = LocalAuthentication();
+
+  bool biometricSuccess = false;
+
+  try {
+    biometricSuccess = await auth.authenticate(
+      localizedReason: 'Authenticate to mark attendance',
+      options: const AuthenticationOptions(
+        biometricOnly: true,
+      ),
+    );
+  } catch (e) {
+    biometricSuccess = false;
+  }
+
+  if (!biometricSuccess) {
+    setState(() => isSubmitting = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Biometric authentication failed")),
+    );
+    return;
+  }
+
+  final newStatus = calculateStatus();
+
+  final record = AttendanceRecord(
+    date: DateTime.now(),
+    status: newStatus,
+  );
+
+  AttendanceStore.addTodayRecord(record);
+
+  setState(() {
+    status = newStatus;
+    StudentPermission.lastAttendanceDate = DateTime.now();
+    isSubmitting = false;
+  });
+}
 
   @override
   Widget build(BuildContext context) {
-    checkForViolation(); // simulate background monitoring
-
     final now = DateTime.now();
+
     final alreadyMarked = StudentPermission.lastAttendanceDate != null &&
-        DateUtils.isSameDay(
-            StudentPermission.lastAttendanceDate, now);
+        DateUtils.isSameDay(StudentPermission.lastAttendanceDate, now);
 
     final todayRecord = AttendanceStore.todayRecord();
+
+    checkForViolation(); // controlled call
 
     return Scaffold(
       appBar: AppBar(title: const Text("Mark Attendance")),
@@ -93,76 +135,27 @@ class _MarkAttendanceScreenState extends State<MarkAttendanceScreen> {
             const Icon(Icons.fingerprint, size: 80),
             const SizedBox(height: 30),
 
-            // ✅ MARK ATTENDANCE (GEOFENCE RESTRICTED)
             SizedBox(
               width: double.infinity,
               height: 55,
               child: ElevatedButton(
                 onPressed: alreadyMarked ||
                         !isAttendanceWindowOpen() ||
-                        !GeoFenceService.canMarkAttendance()
+                        !GeoFenceService.canMarkAttendance() ||
+                        isSubmitting
                     ? null
-                    : () async {
-                      final authenticated =
-                          await BiometricService.authenticate();
-
-                      if (!authenticated) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text("Biometric authentication failed"),
-                          ),
-                        );
-                        return;
-                      }
-
-                      final newStatus = calculateStatus();
-
-                      final record = AttendanceRecord(
-                        date: DateTime.now(),
-                        status: newStatus,
-                      );
-
-                      AttendanceStore.addTodayRecord(record);
-
-                      setState(() {
-                        status = newStatus;
-                        StudentPermission.lastAttendanceDate =
-                            DateTime.now();
-                      });
-                  },
-                child: const Text(
-                  "Mark Attendance",
-                  style: TextStyle(fontSize: 18),
-                ),
+                    : () => _markAttendance(context),
+                child: isSubmitting
+                    ? const CircularProgressIndicator()
+                    : const Text(
+                        "Mark Attendance",
+                        style: TextStyle(fontSize: 18),
+                      ),
               ),
-            ),
-
-            const SizedBox(height: 20),
-
-            // 🧪 GEOFENCE SIMULATION (TEMPORARY)
-            OutlinedButton(
-              onPressed: () {
-                GeoFenceService.currentStatus =
-                    GeoFenceStatus.outsideHostel;
-                setState(() {});
-              },
-              child: const Text("Simulate Leaving Hostel"),
-            ),
-
-            const SizedBox(height: 10),
-
-            OutlinedButton(
-              onPressed: () {
-                GeoFenceService.currentStatus =
-                    GeoFenceStatus.insideHostel;
-                setState(() {});
-              },
-              child: const Text("Simulate Entering Hostel"),
             ),
 
             const SizedBox(height: 30),
 
-            // 📊 STATUS DISPLAY
             Text(
               todayRecord == null
                   ? "Attendance not marked"
@@ -177,11 +170,11 @@ class _MarkAttendanceScreenState extends State<MarkAttendanceScreen> {
                               : status == AttendanceStatus.late
                                   ? "Attendance Marked (Late)"
                                   : "Absent (Non-Local Outing)",
+              textAlign: TextAlign.center,
               style: const TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
               ),
-              textAlign: TextAlign.center,
             ),
           ],
         ),

@@ -17,8 +17,12 @@ class TokenService {
     await _storage.write(key: _roleKey, value: role);
   }
 
-  static Future<String?> getAccessToken() async {
-    return await _storage.read(key: _accessTokenKey);
+  static Future<String> getAccessToken() async {
+    final token = await _storage.read(key: _accessTokenKey);
+    if (token == null || token.isEmpty) {
+      throw Exception("Access token missing. User not authenticated.");
+    }
+    return token;
   }
 
   static Future<String?> getRole() async {
@@ -30,7 +34,11 @@ class TokenService {
   }
 
   static Future<bool> isLoggedIn() async {
-    final token = await getAccessToken();
-    return token != null;
+    try {
+      final token = await getAccessToken();
+      return token.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
   }
 }

@@ -4,8 +4,8 @@ import '../student/student_dashboard.dart';
 import '../admin/admin_dashboard.dart';
 import '../services/token_service.dart';
 import 'auth_guard.dart';
-import 'register_screen.dart';
-
+import 'activate_account.dart';
+import 'otp_verification_screen.dart';
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -44,24 +44,20 @@ class _LoginScreenState extends State<LoginScreen> {
 
   setState(() => isLoading = false);
 
-  if (result["status"] != 200) {
-    _showError(result["error"] ?? "Authentication failed");
-    return;
+  if (result["status"] == 200) {
+    // Password correct → OTP sent
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => OtpVerificationScreen(
+          rollNo: identifier,
+          purpose: "LOGIN",
+        ),
+      ),
+    );
+  } else {
+    _showError(result["body"]?["error"] ?? "Authentication failed");
   }
-
-  final body = result["body"];
-
-  await TokenService.saveTokens(
-    accessToken: body["access_token"],
-    refreshToken: body["refresh_token"],
-    role: body["role"],
-  );
-
-  Navigator.pushAndRemoveUntil(
-    context,
-    MaterialPageRoute(builder: (_) => AuthGuard()),
-    (route) => false,
-  );
 }
   
 
@@ -156,11 +152,11 @@ class _LoginScreenState extends State<LoginScreen> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => const RegisterScreen(),
+                    builder: (_) => const ActivateAccountScreen(),
                   ),
                 );
               },
-              child: const Text("New user? Register here"),
+              child: const Text("New user? Activate account here"),
             ),
           ],
         ),

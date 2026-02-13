@@ -1,19 +1,22 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'login_screen.dart';
+import '../services/token_service.dart';
 import '../services/auth_service.dart';
-import 'hostel_details_screen.dart';
+import 'auth_guard.dart';
 
 class OtpVerificationScreen extends StatefulWidget {
   final String rollNo;
+  final String purpose; // "LOGIN" or "ACTIVATION"
 
   const OtpVerificationScreen({
     super.key,
     required this.rollNo,
+    required this.purpose,
   });
 
   @override
-  State<OtpVerificationScreen> createState() => _OtpVerificationScreenState();
+  State<OtpVerificationScreen> createState() =>
+      _OtpVerificationScreenState();
 }
 
 class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
@@ -37,7 +40,9 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
       if (_remainingSeconds == 0) {
         timer.cancel();
       } else {
-        setState(() => _remainingSeconds--);
+        if (mounted) {
+          setState(() => _remainingSeconds--);
+        }
       }
     });
   }
@@ -50,28 +55,61 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
 
     setState(() => isLoading = true);
 
-    final result = await AuthService.verifyOtp(
-      rollNo: widget.rollNo,
-      otp: otpController.text.trim(),
-    );
+    try {
+      final result = await AuthService.verifyOtp(
+        rollNo: widget.rollNo,
+        otp: otpController.text.trim(),
+        purpose: widget.purpose,
+      ).timeout(const Duration(seconds: 10));
 
-    setState(() => isLoading = false);
+      if (!mounted) return;
 
-    if (result["status"] == 201) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => HostelDetailsScreen(rollNo: widget.rollNo),
-        ),
-      );
-    } else {
-      _showError(
-        result["body"]["error"] ?? "OTP verification failed",
-      );
+      final int status = result["status"];
+      final body = result["body"];
+      
+      print("VERIFY STATUS: ${result["status"]}");
+      print("VERIFY BODY: ${result["body"]}");
+      if (status == 200) {
+        final accessToken = body["access_token"];
+        final refreshToken = body["refresh_token"];
+        final role = body["role"];
+
+        if (accessToken == null || refreshToken == null) {
+          _showError("Invalid server response");
+          return;
+        }
+
+        await TokenService.saveTokens(
+          accessToken: accessToken.toString(),
+          refreshToken: refreshToken.toString(),
+          role: role?.toString() ?? "student",
+        );
+
+
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => const AuthGuard()),
+          (route) => false,
+        );
+
+        return;
+      }
+
+      _showError(body["error"] ?? "Invalid or expired OTP");
+
+    } on TimeoutException {
+      _showError("Server not reachable");
+    } catch (e) {
+      _showError("OTP verification failed");
+    } finally {
+      if (mounted) {
+        setState(() => isLoading = false);
+      }
     }
   }
 
   void _showError(String message) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(message)));
   }
@@ -102,16 +140,12 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                 fontWeight: FontWeight.w600,
               ),
             ),
-
             const SizedBox(height: 6),
-
             Text(
               "Enter the OTP sent to ${widget.rollNo}",
               style: const TextStyle(color: Colors.grey),
             ),
-
             const SizedBox(height: 32),
-
             TextField(
               controller: otpController,
               keyboardType: TextInputType.number,
@@ -122,38 +156,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                 border: OutlineInputBorder(),
               ),
             ),
-
-            const SizedBox(height: 16),
-
-            Row(
-              children: [
-                const Text(
-                  "Resend OTP in ",
-                  style: TextStyle(color: Colors.grey),
-                ),
-                Text(
-                  _remainingSeconds > 0
-                      ? "${_remainingSeconds}s"
-                      : "now",
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 12),
-
-            TextButton(
-              onPressed: _remainingSeconds == 0 && !isLoading
-                  ? () {
-                      _startTimer();
-                      _showError("Resend OTP not enabled yet");
-                    }
-                  : null,
-              child: const Text("RESEND OTP"),
-            ),
-
             const Spacer(),
-
             SizedBox(
               width: double.infinity,
               height: 48,
@@ -161,7 +164,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                 onPressed: isLoading ? null : _verifyOtp,
                 child: isLoading
                     ? const CircularProgressIndicator()
-                    : const Text("VERIFY & PROCEED"),
+                    : const Text("VERIFY & LOGIN"),
               ),
             ),
           ],
